@@ -1,0 +1,37 @@
+# Environment files with secrets
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+*.pyc
+
+# Node / Frontend
+node_modules/
+dist/
+.DS_Store
+
+# Flutter / Mobile
+mobile/build/
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.pub-cache/
+mobile/.pub/
+*.g.dart
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
