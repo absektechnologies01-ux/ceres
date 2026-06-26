@@ -33,6 +33,12 @@ class ClassItem {
       );
 
   @override
+  bool operator ==(Object other) => other is ClassItem && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
+
+  @override
   String toString() => '$name ($academicYear)';
 }
 
@@ -55,6 +61,12 @@ class CourseItem {
         name: json['name'] as String,
         departmentId: json['department_id'] as String? ?? '',
       );
+
+  @override
+  bool operator ==(Object other) => other is CourseItem && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 
   @override
   String toString() => '$code — $name';

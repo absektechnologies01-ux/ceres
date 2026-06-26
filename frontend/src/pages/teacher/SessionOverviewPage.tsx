@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { markingApi } from '../../api/marking';
 import { sessionsApi } from '../../api/sessions';
-import type { SessionResult, Sheet } from '../../types';
+import type { SessionResult, Sheet, ScanSession } from '../../types';
 import TopBar from '../../components/layout/TopBar';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
@@ -10,8 +10,28 @@ import Table from '../../components/ui/Table';
 import Spinner from '../../components/ui/Spinner';
 import { formatMarks } from '../../utils/markingHelpers';
 
+function exportResultsCSV(results: SessionResult[], sessionName: string) {
+  const header = ['Student ID', 'Total Score', 'Max Score', 'Percentage', 'Status'];
+  const rows = results.map(r => [
+    r.student_id,
+    r.total_score ?? '',
+    r.max_possible,
+    r.total_score != null ? ((r.total_score / r.max_possible) * 100).toFixed(1) + '%' : '',
+    r.status,
+  ]);
+  const csv = [header, ...rows].map(row => row.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${sessionName}_results.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function SessionOverviewPage() {
   const { id } = useParams<{ id: string }>();
+  const [session, setSession] = useState<ScanSession | null>(null);
   const [results, setResults] = useState<SessionResult[]>([]);
   const [flagged, setFlagged] = useState<Sheet[]>([]);
   const [resolveInputs, setResolveInputs] = useState<Record<string, string>>({});
@@ -21,14 +41,15 @@ export default function SessionOverviewPage() {
   const fetchData = () => {
     if (!id) return;
     Promise.allSettled([
+      sessionsApi.get(id),
       markingApi.getResults(id),
       sessionsApi.getFlaggedSheets(id),
-    ]).then(([resultsRes, flaggedRes]) => {
+    ]).then(([sessionRes, resultsRes, flaggedRes]) => {
+      if (sessionRes.status === 'fulfilled') setSession(sessionRes.value);
       if (resultsRes.status === 'fulfilled') setResults(resultsRes.value);
       if (flaggedRes.status === 'fulfilled') {
         const sheets = flaggedRes.value;
         setFlagged(sheets);
-        // Pre-fill inputs with whatever the OCR detected
         const inputs: Record<string, string> = {};
         sheets.forEach(s => { inputs[s.id] = s.student_id_raw ?? ''; });
         setResolveInputs(inputs);
@@ -81,6 +102,8 @@ export default function SessionOverviewPage() {
   if (loading) return <div className="flex justify-center py-16"><Spinner size="lg" /></div>;
 
   const totalMarked = results.filter(r => r.status === 'marked').length;
+  const isApproved = session?.review_status === 'approved';
+  const isRejected = session?.review_status === 'rejected';
 
   return (
     <div>
@@ -89,15 +112,35 @@ export default function SessionOverviewPage() {
         backTo="/teacher"
         actions={
           <div className="flex gap-2">
+            {results.length > 0 && (
+              <Button variant="secondary" size="sm" onClick={() => exportResultsCSV(results, id ?? 'session')}>
+                Export CSV
+              </Button>
+            )}
             <Link to={`/teacher/sessions/${id}/scheme`}>
               <Button variant="secondary" size="sm">Manage Scheme</Button>
             </Link>
-            <Link to={`/teacher/sessions/${id}/marking`}>
-              <Button variant="primary" size="sm">Go to Marking</Button>
-            </Link>
+            {!isApproved && (
+              <Link to={`/teacher/sessions/${id}/marking`}>
+                <Button variant="primary" size="sm">Go to Marking</Button>
+              </Link>
+            )}
           </div>
         }
       />
+
+      {isApproved && (
+        <div className="bg-green-50 border-b border-green-200 px-6 py-3 flex items-center gap-2 text-green-800 text-sm">
+          <svg className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+          Marking approved — results are locked. Contact an admin if changes are needed.
+        </div>
+      )}
+      {isRejected && session?.review_note && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 text-amber-800 text-sm">
+          <span className="font-medium">Marking sent back for revision:</span> {session.review_note}
+        </div>
+      )}
+
       <div className="p-6 space-y-6">
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">

@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter pub *)",
+      "Bash(flutter analyze *)",
+      "Bash(venv/bin/python -c \"from app.models.marking import MarkingReview; print\\('Model import OK'\\)\")",
+      "Bash(venv/bin/alembic revision *)",
+      "Bash(venv/bin/alembic upgrade *)",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Read(//Applications/Postgres.app/Contents/**)",
+      "Read(//usr/local/**)",
+      "Bash(/usr/local/Cellar/postgresql@17/17.8/bin/psql postgresql://asante@localhost:5432/ceres -c \"\\\\dt\")",
+      "Bash(/usr/local/Cellar/postgresql@17/17.8/bin/psql postgresql://asante@localhost:5432/ceres -c \"SELECT id, name, email, role FROM users WHERE role = 'admin';\")",
+      "Bash(/usr/local/Cellar/postgresql@17/17.8/bin/psql postgresql://asante@localhost:5432/ceres)",
+      "Bash(/usr/local/Cellar/postgresql@17/17.8/bin/psql postgresql://asante@localhost:5432/ceres -c \"SELECT name, email, role FROM users; SELECT COUNT\\(*\\) AS sessions FROM scan_sessions; SELECT COUNT\\(*\\) AS submissions FROM submissions; SELECT COUNT\\(*\\) AS sheets FROM sheets;\")",
+      "Bash(pkill -f \"uvicorn app.main:app\")",
+      "Bash(bash start.sh)",
+      "Bash(echo \"Backend PID: $!\")",
+      "Bash(pkill -f \"vite\")",
+      "Bash(xargs cat -n)",
+      "Bash(pg_isready -h localhost -p 5432)",
+      "Bash(/usr/local/Cellar/postgresql@17/17.8/bin/pg_isready -h localhost -p 5432)",
+      "Bash(./start.sh)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8000/health)",
+      "Bash(ps -p 84384 -p 84388 -o pid,command)",
+      "Bash(kill 84384 84388)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" --max-time 2 http://localhost:8000/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" --max-time 2 http://10.238.242.162:8000/health)"
+    ]
+  }
+}

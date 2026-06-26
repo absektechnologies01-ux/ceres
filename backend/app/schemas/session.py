@@ -19,6 +19,8 @@ class SessionOut(BaseModel):
     created_at: datetime
     submission_count: int = 0
     has_scheme: bool = False
+    review_status: Optional[str] = None
+    review_note: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -33,3 +35,8 @@ class SheetCreate(BaseModel):
 
 class SheetResolve(BaseModel):
     student_id_confirmed: str
+
+
+class AttendanceRecord(BaseModel):
+    student_id: str
+    scan_date: str  # "YYYY-MM-DD"

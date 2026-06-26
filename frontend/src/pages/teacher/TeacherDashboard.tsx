@@ -74,6 +74,16 @@ export default function TeacherDashboard() {
                         Scheme uploaded
                       </span>
                     )}
+                    {s.review_status === 'approved' && (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                        ✓ Approved
+                      </span>
+                    )}
+                    {s.review_status === 'rejected' && (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700" title={s.review_note ?? undefined}>
+                        ✗ Rejected — see note
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -89,9 +99,15 @@ export default function TeacherDashboard() {
                   <Link to={`/teacher/sessions/${s.id}/scheme`}>
                     <Button size="sm" variant="secondary">Manage Scheme</Button>
                   </Link>
-                  <Link to={`/teacher/sessions/${s.id}/marking`}>
-                    <Button size="sm" variant="primary">Mark</Button>
-                  </Link>
+                  {s.review_status === 'approved' ? (
+                    <Button size="sm" variant="primary" disabled title="Marking locked — approved by admin">
+                      Locked
+                    </Button>
+                  ) : (
+                    <Link to={`/teacher/sessions/${s.id}/marking`}>
+                      <Button size="sm" variant="primary">Mark</Button>
+                    </Link>
+                  )}
                 </div>
               </div>
             ))}

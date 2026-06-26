@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth, admin, sessions, submissions, marking, schemes, institution
+from app.routers import auth, admin, sessions, submissions, marking, schemes, institution, audit
 from app.database import engine
 from app import models
 
@@ -28,6 +28,7 @@ app.include_router(submissions.router)
 app.include_router(marking.router)
 app.include_router(schemes.router)
 app.include_router(institution.router)
+app.include_router(audit.router)
 
 
 @app.get("/health")

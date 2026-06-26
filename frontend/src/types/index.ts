@@ -74,6 +74,7 @@ export interface TeacherAssignment {
 // ─── Sessions ──────────────────────────────────────────────────────────────────
 
 export type SessionStatus = 'active' | 'closed';
+export type ReviewStatus = 'pending' | 'approved' | 'rejected';
 
 export interface ScanSession {
   id: string;
@@ -84,6 +85,8 @@ export interface ScanSession {
   created_at: string;
   submission_count: number;
   has_scheme: boolean;
+  review_status?: ReviewStatus | null;
+  review_note?: string | null;
   operator?: User;
   class_?: Class;
   course?: Course;
@@ -195,6 +198,99 @@ export interface SessionResult {
   max_possible: number;
   status: SubmissionStatus;
   submission_id: string;
+}
+
+// ─── Audit & Analytics ────────────────────────────────────────────────────────
+
+export interface AuditSession {
+  session_id: string;
+  class_name: string;
+  course_name: string;
+  operator_name: string;
+  teacher_name: string | null;
+  session_status: string;
+  created_at: string;
+  total_submissions: number;
+  marked_count: number;
+  review_status: ReviewStatus;
+  review_note: string | null;
+  reviewed_at: string | null;
+}
+
+export interface AuditScore {
+  question_number: string;
+  awarded_marks: number | null;
+  max_marks: number;
+  comment: string | null;
+  marked_at: string | null;
+  teacher_name: string;
+}
+
+export interface AuditSubmission {
+  submission_id: string;
+  student_id: string;
+  status: SubmissionStatus;
+  total_score: number | null;
+  scores: AuditScore[];
+}
+
+export interface AuditSessionDetail {
+  session_id: string;
+  class_name: string;
+  course_name: string;
+  session_status: string;
+  created_at: string;
+  review_status: ReviewStatus;
+  review_note: string | null;
+  reviewed_at: string | null;
+  scheme_questions: SchemeQuestion[];
+  submissions: AuditSubmission[];
+}
+
+export interface MarkingReview {
+  id: string;
+  session_id: string;
+  reviewer_id: string | null;
+  status: ReviewStatus;
+  note: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export interface QuestionPerformance {
+  question_number: string;
+  label: string;
+  average_awarded: number;
+  max_marks: number;
+  avg_pct: number;
+}
+
+export interface SessionAnalytics {
+  session_id: string;
+  total_submissions: number;
+  marked_count: number;
+  average_score: number | null;
+  max_possible: number;
+  pass_rate: number | null;
+  score_distribution: { range: string; count: number }[];
+  question_performance: QuestionPerformance[];
+}
+
+export interface AnalyticsOverview {
+  total_sessions: number;
+  total_submissions: number;
+  total_flagged_sheets: number;
+  average_score_pct: number | null;
+  sessions_approved: number;
+  sessions_pending_review: number;
+  sessions_rejected: number;
+}
+
+// ─── Attendance ───────────────────────────────────────────────────────────────
+
+export interface AttendanceRecord {
+  student_id: string;
+  scan_date: string; // "YYYY-MM-DD"
 }
 
 // ─── Pagination / List responses ───────────────────────────────────────────────

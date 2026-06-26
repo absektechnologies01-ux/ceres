@@ -25,3 +25,4 @@ class ScanSession(Base):
     sheets = relationship("Sheet", back_populates="session")
     submissions = relationship("Submission", back_populates="session")
     marking_scheme = relationship("MarkingScheme", back_populates="session", uselist=False)
+    review = relationship("MarkingReview", back_populates="session", uselist=False)

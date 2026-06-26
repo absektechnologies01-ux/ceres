@@ -7,9 +7,10 @@ import Spinner from '../ui/Spinner';
 
 interface ScorePanelProps {
   questions: SubmissionQuestion[];
+  readOnly?: boolean;
 }
 
-export default function ScorePanel({ questions }: ScorePanelProps) {
+export default function ScorePanel({ questions, readOnly = false }: ScorePanelProps) {
   const {
     scores,
     activeQuestionIndex,
@@ -66,12 +67,14 @@ export default function ScorePanel({ questions }: ScorePanelProps) {
           return (
             <div
               key={q.question_number}
-              onClick={() => setActiveQuestion(idx)}
+              onClick={() => !readOnly && setActiveQuestion(idx)}
               className={`
-                px-4 py-3 border-b border-gray-100 cursor-pointer transition-colors
-                ${isActive
-                  ? 'bg-primary-light border-l-4 border-l-primary'
-                  : 'hover:bg-gray-50 border-l-4 border-l-transparent'}
+                px-4 py-3 border-b border-gray-100 transition-colors
+                ${readOnly
+                  ? 'cursor-default border-l-4 border-l-transparent'
+                  : isActive
+                    ? 'cursor-pointer bg-primary-light border-l-4 border-l-primary'
+                    : 'cursor-pointer hover:bg-gray-50 border-l-4 border-l-transparent'}
               `}
             >
               {/* Question row */}
@@ -120,8 +123,8 @@ export default function ScorePanel({ questions }: ScorePanelProps) {
                 </div>
               </div>
 
-              {/* Comment textarea — only shown for active question */}
-              {isActive && (
+              {/* Comment textarea — only shown for active question (not in read-only mode) */}
+              {isActive && !readOnly && (
                 <div className="mt-3" onClick={(e) => e.stopPropagation()}>
                   <div className="relative">
                     <textarea
@@ -149,22 +152,35 @@ export default function ScorePanel({ questions }: ScorePanelProps) {
                   </p>
                 </div>
               )}
+              {/* Show comment read-only when locked */}
+              {readOnly && entry?.comment && (
+                <p className="mt-1 text-xs text-gray-500 italic">{entry.comment}</p>
+              )}
             </div>
           );
         })}
       </div>
 
-      {/* Keyboard shortcut hints */}
-      <div className="px-4 py-3 border-t border-gray-200 flex-shrink-0">
-        <p className="text-xs text-gray-400 leading-relaxed">
-          <strong>F</strong> full · <strong>H</strong> half · <strong>0–9</strong> type marks ·{' '}
-          <strong>Enter/Tab</strong> confirm + next · <strong>Shift+Tab</strong> prev ·{' '}
-          <strong>⌫</strong> clear
-        </p>
-        <p className="text-xs text-gray-400 mt-1">
-          Click comment box to type — shortcuts pause while focused.
-        </p>
-      </div>
+      {/* Footer */}
+      {readOnly ? (
+        <div className="px-4 py-3 border-t border-green-200 bg-green-50 flex-shrink-0 flex items-center gap-2">
+          <svg className="h-4 w-4 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          <p className="text-xs text-green-700 font-medium">Locked — marking approved by admin</p>
+        </div>
+      ) : (
+        <div className="px-4 py-3 border-t border-gray-200 flex-shrink-0">
+          <p className="text-xs text-gray-400 leading-relaxed">
+            <strong>F</strong> full · <strong>H</strong> half · <strong>0–9</strong> type marks ·{' '}
+            <strong>Enter/Tab</strong> confirm + next · <strong>Shift+Tab</strong> prev ·{' '}
+            <strong>⌫</strong> clear
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            Click comment box to type — shortcuts pause while focused.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

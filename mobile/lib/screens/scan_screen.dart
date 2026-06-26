@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/app_config.dart';
 import '../providers/session_provider.dart';
+import '../services/hardware_service.dart';
 import '../services/imagekit_service.dart';
 import '../services/ocr_service.dart';
 import 'session_summary_screen.dart';
@@ -24,8 +26,13 @@ class _ScanScreenState extends State<ScanScreen> {
   // Upload state
   XFile? _capturedFile;
   bool _uploading = false;
-  bool? _lastFlagged;     // null = no recent result
+  bool? _lastFlagged;   // null = no recent result
   bool? _lastSuccess;
+
+  // Hardware / auto-scan state
+  final _hardware = HardwareService();
+  StreamSubscription<HardwareEvent>? _hardwareSub;
+  bool _hwPaused = false; // true while ESP32 is in ERROR_PAUSED (awaiting operator)
 
   final _imagekitService = ImageKitService();
   final _ocrService = OcrService();
@@ -34,6 +41,8 @@ class _ScanScreenState extends State<ScanScreen> {
   void initState() {
     super.initState();
     _initCamera();
+    _hardwareSub = _hardware.events.listen(_onHardwareEvent);
+    _hardware.connect();
   }
 
   Future<void> _initCamera() async {
@@ -57,11 +66,55 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   void dispose() {
+    _hardwareSub?.cancel();
+    _hardware.dispose();
     _controller?.dispose();
     super.dispose();
   }
 
-  // ── Capture ───────────────────────────────────────────────────────────────
+  // ── Hardware events ─────────────────────────────────────────────────────────
+
+  void _onHardwareEvent(HardwareEvent event) {
+    if (event == HardwareEvent.paperDetected) _autoScan();
+  }
+
+  /// Called when ESP32 signals PAPER_DETECTED.
+  /// Captures one photo, runs the full upload pipeline, then signals the ESP32.
+  Future<void> _autoScan() async {
+    if (_uploading || _hwPaused || !_cameraReady) return;
+
+    await _capture();
+
+    if (_capturedFile == null) {
+      _hardware.sendScanFailed();
+      setState(() => _hwPaused = true);
+      return;
+    }
+
+    await _confirm();
+
+    if (_lastSuccess == true && _lastFlagged == true) {
+      _hardware.sendScanFlagged();
+    } else if (_lastSuccess == true) {
+      _hardware.sendScanComplete();
+    } else {
+      _hardware.sendScanFailed();
+      setState(() => _hwPaused = true);
+    }
+  }
+
+  /// Called when operator taps Continue after a failed scan.
+  void _onContinue() {
+    setState(() {
+      _hwPaused = false;
+      _capturedFile = null;
+      _lastSuccess = null;
+      _lastFlagged = null;
+    });
+    _hardware.sendResume();
+  }
+
+  // ── Capture ─────────────────────────────────────────────────────────────────
 
   Future<void> _capture() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
@@ -77,7 +130,7 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
-  // ── Confirm / upload ──────────────────────────────────────────────────────
+  // ── Confirm / upload ────────────────────────────────────────────────────────
 
   Future<void> _confirm() async {
     if (_capturedFile == null) return;
@@ -108,11 +161,11 @@ class _ScanScreenState extends State<ScanScreen> {
       );
 
       if (sheet == null) {
-        // sessionProvider set error message
         setState(() {
           _uploading = false;
           _lastSuccess = false;
         });
+        _showSnack(sessionProvider.error ?? 'Upload failed', isError: true);
         return;
       }
 
@@ -137,13 +190,12 @@ class _ScanScreenState extends State<ScanScreen> {
         _lastSuccess = null;
       });
 
-  // ── End session ───────────────────────────────────────────────────────────
+  // ── End session ─────────────────────────────────────────────────────────────
 
   Future<void> _endSession() async {
     final session = context.read<SessionProvider>();
     final flagged = session.flaggedCount;
 
-    // Warn if there are flagged sheets
     if (flagged > 0) {
       final confirmed = await _showFlaggedWarning(flagged);
       if (!confirmed) return;
@@ -191,7 +243,7 @@ class _ScanScreenState extends State<ScanScreen> {
     ));
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  // ── Build ────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -205,6 +257,15 @@ class _ScanScreenState extends State<ScanScreen> {
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
+          // Hardware connection indicator
+          Padding(
+            padding: const EdgeInsets.only(right: 4, top: 8, bottom: 8),
+            child: Icon(
+              _hwPaused ? Icons.wifi_off : Icons.wifi,
+              color: _hwPaused ? Colors.red : Colors.greenAccent,
+              size: 20,
+            ),
+          ),
           // Sheet counter chip
           Container(
             margin: const EdgeInsets.only(right: 8, top: 8, bottom: 8),
@@ -257,6 +318,12 @@ class _ScanScreenState extends State<ScanScreen> {
               icon: Icons.upload_rounded,
               text: 'Uploading sheet…',
             )
+          else if (_hwPaused)
+            _StatusBanner(
+              color: Colors.red.shade900,
+              icon: Icons.pause_circle_outline,
+              text: 'Scan failed — fix paper and tap Continue',
+            )
           else if (_lastSuccess == true && _lastFlagged == true)
             _StatusBanner(
               color: Colors.amber.shade700,
@@ -279,8 +346,7 @@ class _ScanScreenState extends State<ScanScreen> {
           // Action bar
           Container(
             color: Colors.black,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -290,7 +356,7 @@ class _ScanScreenState extends State<ScanScreen> {
                       color: Colors.white),
                   label: const Text('End Session',
                       style: TextStyle(color: Colors.white)),
-                  onPressed: _uploading ? null : _endSession,
+                  onPressed: (_uploading || _hwPaused) ? null : _endSession,
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.white54),
                     padding: const EdgeInsets.symmetric(
@@ -298,14 +364,37 @@ class _ScanScreenState extends State<ScanScreen> {
                   ),
                 ),
 
-                // Main action: capture or confirm/retake
-                if (_capturedFile == null)
-                  _CaptureButton(onPressed: _uploading ? null : _capture)
+                // Main action area
+                if (_hwPaused)
+                  // Error state: operator must acknowledge before resuming belt
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text('Continue'),
+                    onPressed: _onContinue,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                    ),
+                  )
+                else if (_uploading || !_cameraReady)
+                  // Busy: uploading or camera still initialising
+                  const SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 3),
+                  )
+                else if (_capturedFile == null)
+                  // Auto-mode idle: show manual capture as bench-test fallback
+                  _CaptureButton(onPressed: _capture)
                 else
+                  // Preview shown (only reachable in manual / bench-test mode)
                   Row(
                     children: [
                       OutlinedButton(
-                        onPressed: _uploading ? null : _retake,
+                        onPressed: _retake,
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: Colors.white54),
                           foregroundColor: Colors.white,
@@ -314,21 +403,14 @@ class _ScanScreenState extends State<ScanScreen> {
                       ),
                       const SizedBox(width: 12),
                       ElevatedButton(
-                        onPressed: _uploading ? null : _confirm,
+                        onPressed: _confirm,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(AppConfig.primaryColor),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
                               horizontal: 20, vertical: 12),
                         ),
-                        child: _uploading
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Text('Use This'),
+                        child: const Text('Use This'),
                       ),
                     ],
                   ),
@@ -408,9 +490,7 @@ class _StatusBanner extends StatelessWidget {
         children: [
           Icon(icon, color: Colors.white, size: 18),
           const SizedBox(width: 8),
-          Text(text,
-              style:
-                  const TextStyle(color: Colors.white, fontSize: 14)),
+          Text(text, style: const TextStyle(color: Colors.white, fontSize: 14)),
         ],
       ),
     );

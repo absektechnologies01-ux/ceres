@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { submissionsApi } from '../../api/submissions';
 import { schemesApi } from '../../api/schemes';
-import type { Submission, SubmissionQuestion, Sheet, MarkingScheme } from '../../types';
+import { sessionsApi } from '../../api/sessions';
+import type { Submission, SubmissionQuestion, Sheet, MarkingScheme, ScanSession } from '../../types';
 import { useMarkingStore } from '../../store/markingStore';
 
 import StudentList from '../../components/marking/StudentList';
@@ -23,6 +24,7 @@ export default function MarkingPage() {
     toggleOriginalImage,
   } = useMarkingStore();
 
+  const [session, setSession] = useState<ScanSession | null>(null);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [questions, setQuestions] = useState<SubmissionQuestion[]>([]);
   const [sheets, setSheets] = useState<Sheet[]>([]);
@@ -37,7 +39,9 @@ export default function MarkingPage() {
     Promise.all([
       submissionsApi.listForSession(sessionId),
       schemesApi.get(sessionId).catch(() => null),
-    ]).then(([subs, sch]) => {
+      sessionsApi.get(sessionId).catch(() => null),
+    ]).then(([subs, sch, sess]) => {
+      setSession(sess);
       setSubmissions(subs);
       setScheme(sch);
       // Auto-select first submission
@@ -82,6 +86,7 @@ export default function MarkingPage() {
   };
 
   const activeQuestion = questions[activeQuestionIndex] ?? null;
+  const isApproved = session?.review_status === 'approved';
 
   if (loadingSubmissions) {
     return (
@@ -152,6 +157,19 @@ export default function MarkingPage() {
         )}
       </header>
 
+      {/* Review status banners */}
+      {session?.review_status === 'approved' && (
+        <div className="bg-green-50 border-b border-green-200 px-4 py-2 flex items-center gap-2 text-green-800 text-sm flex-shrink-0">
+          <svg className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+          Marking approved — results are locked. Scores are read-only.
+        </div>
+      )}
+      {session?.review_status === 'rejected' && session.review_note && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-amber-800 text-sm flex-shrink-0">
+          <span className="font-medium">Sent back for revision:</span> {session.review_note}
+        </div>
+      )}
+
       {/* Three-panel layout */}
       <div className="flex-1 overflow-hidden grid grid-cols-[240px_1fr_320px]">
         {/* Left — Student list */}
@@ -179,11 +197,11 @@ export default function MarkingPage() {
         </div>
 
         {/* Right — Score panel */}
-        <ScorePanel questions={questions} />
+        <ScorePanel questions={questions} readOnly={isApproved} />
       </div>
 
-      {/* Keyboard handler — mounts after questions are loaded */}
-      {questions.length > 0 && !loadingQuestions && (
+      {/* Keyboard handler — disabled when marking is locked */}
+      {questions.length > 0 && !loadingQuestions && !isApproved && (
         <KeyboardHandler
           questions={questions}
           submissions={submissions}

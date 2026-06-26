@@ -47,3 +47,20 @@ class SessionResult(BaseModel):
     max_possible: float
     status: str
     submission_id: uuid.UUID
+
+
+class ReviewOut(BaseModel):
+    id: uuid.UUID
+    session_id: uuid.UUID
+    reviewer_id: Optional[uuid.UUID] = None
+    status: str
+    note: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class RejectInput(BaseModel):
+    note: str

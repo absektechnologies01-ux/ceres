@@ -10,6 +10,11 @@ import AdminDashboard from '../pages/admin/AdminDashboard';
 import UsersPage from '../pages/admin/UsersPage';
 import InstitutionsPage from '../pages/admin/InstitutionsPage';
 import AssignmentsPage from '../pages/admin/AssignmentsPage';
+import AuditPage from '../pages/admin/AuditPage';
+import AuditSessionPage from '../pages/admin/AuditSessionPage';
+import AnalyticsPage from '../pages/admin/AnalyticsPage';
+import AttendancePage from '../pages/admin/AttendancePage';
+import AttendanceDetailPage from '../pages/admin/AttendanceDetailPage';
 
 // Teacher
 import TeacherDashboard from '../pages/teacher/TeacherDashboard';
@@ -64,6 +69,56 @@ export default function AppRouter() {
             <ProtectedRoute role="admin">
               <AppShell>
                 <AssignmentsPage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/audit"
+          element={
+            <ProtectedRoute role="admin">
+              <AppShell>
+                <AuditPage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/audit/:sessionId"
+          element={
+            <ProtectedRoute role="admin">
+              <AppShell>
+                <AuditSessionPage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/analytics"
+          element={
+            <ProtectedRoute role="admin">
+              <AppShell>
+                <AnalyticsPage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/attendance"
+          element={
+            <ProtectedRoute role="admin">
+              <AppShell>
+                <AttendancePage />
+              </AppShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/attendance/:sessionId"
+          element={
+            <ProtectedRoute role="admin">
+              <AppShell>
+                <AttendanceDetailPage />
               </AppShell>
             </ProtectedRoute>
           }

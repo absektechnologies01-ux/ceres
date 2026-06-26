@@ -9,9 +9,9 @@ from app.dependencies import get_current_user, require_role
 from app.models.user import User, UserRole
 from app.models.session import ScanSession, SessionStatus
 from app.models.submission import Sheet, Submission
-from app.models.marking import MarkingScheme
+from app.models.marking import MarkingScheme, MarkingReview
 from app.models.institution import TeacherAssignment
-from app.schemas.session import SessionCreate, SessionOut, SheetCreate, SheetResolve
+from app.schemas.session import SessionCreate, SessionOut, SheetCreate, SheetResolve, AttendanceRecord
 from app.schemas.submission import SheetOut
 from app.services.grouping_service import process_sheet_and_group
 
@@ -21,7 +21,7 @@ operator_only = require_role(UserRole.scanner_operator)
 
 
 def _enrich_sessions(sessions: list, db: Session) -> List[SessionOut]:
-    """Attach submission_count and has_scheme to a list of ScanSession objects."""
+    """Attach submission_count, has_scheme, and review_status to a list of ScanSession objects."""
     if not sessions:
         return []
     ids = [s.id for s in sessions]
@@ -38,11 +38,20 @@ def _enrich_sessions(sessions: list, db: Session) -> List[SessionOut]:
         .filter(MarkingScheme.session_id.in_(ids))
         .all()
     }
+    reviews = {
+        r.session_id: r
+        for r in db.query(MarkingReview)
+        .filter(MarkingReview.session_id.in_(ids))
+        .all()
+    }
     result = []
     for s in sessions:
         out = SessionOut.model_validate(s)
         out.submission_count = counts.get(s.id, 0)
         out.has_scheme = s.id in scheme_ids
+        review = reviews.get(s.id)
+        out.review_status = review.status.value if review else None
+        out.review_note = review.note if review else None
         result.append(out)
     return result
 
@@ -171,6 +180,36 @@ def delete_session(
     db.query(MarkingScheme).filter(MarkingScheme.session_id == session_id).delete(synchronize_session=False)
     db.delete(session)
     db.commit()
+
+
+# ─── Attendance ──────────────────────────────────────────────────────────────
+
+@router.get("/sessions/{session_id}/attendance", response_model=List[AttendanceRecord])
+def get_attendance(
+    session_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    session = _get_session_or_404(session_id, db)
+    if current_user.role == UserRole.teacher:
+        _check_teacher_access(session, current_user, db)
+    elif current_user.role == UserRole.scanner_operator:
+        if session.operator_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    submissions = (
+        db.query(Submission)
+        .filter(Submission.session_id == session_id)
+        .order_by(Submission.created_at)
+        .all()
+    )
+    return [
+        AttendanceRecord(
+            student_id=s.student_id,
+            scan_date=s.created_at.strftime("%Y-%m-%d"),
+        )
+        for s in submissions
+    ]
 
 
 # ─── Sheets ───────────────────────────────────────────────────────────────────

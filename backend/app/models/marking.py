@@ -1,8 +1,15 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, Float, Text, ForeignKey, func, Index
+import enum
+from sqlalchemy import Column, String, DateTime, Float, Text, ForeignKey, func, Index, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.database import Base
+
+
+class ReviewStatus(str, enum.Enum):
+    pending  = "pending"
+    approved = "approved"
+    rejected = "rejected"
 
 
 class MarkingScheme(Base):
@@ -29,3 +36,18 @@ class QuestionScore(Base):
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     submission = relationship("Submission", back_populates="scores")
     teacher = relationship("User")
+
+
+class MarkingReview(Base):
+    __tablename__ = "marking_reviews"
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id  = Column(UUID(as_uuid=True), ForeignKey("scan_sessions.id"), unique=True, nullable=False, index=True)
+    reviewer_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    status      = Column(SQLEnum(ReviewStatus), default=ReviewStatus.pending, nullable=False)
+    note        = Column(Text, nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+    session  = relationship("ScanSession", back_populates="review")
+    reviewer = relationship("User")

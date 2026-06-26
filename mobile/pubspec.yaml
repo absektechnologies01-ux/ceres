@@ -30,6 +30,9 @@ dependencies:
   # Persistent preferences
   shared_preferences: ^2.2.3
 
+  # WebSocket client for ESP32 hardware bridge
+  web_socket_channel: ^3.0.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

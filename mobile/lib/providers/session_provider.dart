@@ -38,6 +38,8 @@ class SessionProvider extends ChangeNotifier {
   Future<void> loadClassesAndCourses() async {
     _loading = true;
     _error = null;
+    _selectedClass = null;
+    _selectedCourse = null;
     notifyListeners();
 
     try {

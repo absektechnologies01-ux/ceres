@@ -1,5 +1,5 @@
 import api from './axios';
-import type { ScanSession, Sheet } from '../types';
+import type { ScanSession, Sheet, AttendanceRecord } from '../types';
 
 export const sessionsApi = {
   create: (body: { class_id: string; course_id: string }) =>
@@ -31,4 +31,7 @@ export const sessionsApi = {
     }).then(r => r.data),
 
   delete: (id: string) => api.delete(`/sessions/${id}`),
+
+  getAttendance: (id: string) =>
+    api.get<AttendanceRecord[]>(`/sessions/${id}/attendance`).then(r => r.data),
 };

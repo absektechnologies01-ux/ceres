@@ -59,7 +59,17 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _error = 'Invalid credentials. Please try again.';
+      final msg = e.toString();
+      if (msg.contains('401') || msg.contains('400')) {
+        _error = 'Invalid credentials. Please try again.';
+      } else if (msg.contains('SocketException') ||
+          msg.contains('Connection refused') ||
+          msg.contains('Network is unreachable') ||
+          msg.contains('Failed host lookup')) {
+        _error = 'Cannot reach server. Check your network connection.';
+      } else {
+        _error = 'Login failed: $msg';
+      }
       _status = AuthStatus.unauthenticated;
       _loading = false;
       notifyListeners();
