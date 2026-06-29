@@ -14,3 +14,4 @@ imagekitio>=4.0.0
 pydantic-settings>=2.2.1
 pydantic[email]>=2.7.1
 python-dotenv>=1.0.1
+websocket-client>=1.8.0

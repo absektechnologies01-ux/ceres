@@ -14,6 +14,7 @@ from app.models.institution import TeacherAssignment
 from app.schemas.session import SessionCreate, SessionOut, SheetCreate, SheetResolve, AttendanceRecord
 from app.schemas.submission import SheetOut
 from app.services.grouping_service import process_sheet_and_group
+from app.services import esp32_client
 
 router = APIRouter(tags=["sessions"])
 
@@ -239,8 +240,14 @@ def upload_sheet(
     db.flush()
 
     # Trigger grouping service
-    sheet = process_sheet_and_group(sheet, db)
+    try:
+        sheet = process_sheet_and_group(sheet, db)
+    except Exception:
+        esp32_client.send_scan_result("SCAN_FAILED")
+        raise
     db.refresh(sheet)
+
+    esp32_client.send_scan_result("SCAN_FLAGGED" if sheet.flagged else "SCAN_COMPLETE")
     return sheet
 
 

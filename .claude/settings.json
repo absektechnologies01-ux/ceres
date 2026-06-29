@@ -28,7 +28,20 @@
       "Bash(kill 84384 84388)",
       "Bash(echo \"exit: $?\")",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" --max-time 2 http://localhost:8000/health)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" --max-time 2 http://10.238.242.162:8000/health)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" --max-time 2 http://10.238.242.162:8000/health)",
+      "Bash(curl -s -m 3 http://localhost:8000/health)",
+      "Bash(venv/bin/pip install *)",
+      "Bash(venv/bin/python -m pytest tests/test_submissions.py tests/test_ocr.py -q)",
+      "Bash(venv/bin/python -m pytest tests/test_ocr.py::test_tc25_corrupt_image_returns_handled_error_not_unhandled_exception -q)",
+      "Bash(grep -c \"ESP32_WS_URL\" .env)",
+      "Bash(lsof -nP -iTCP:8000 -sTCP:LISTEN)",
+      "Bash(git -C /Users/asante/Documents/projects/ceresweb log --oneline -3)",
+      "Bash(git -C /Users/asante/Documents/projects/ceresweb show --stat HEAD)",
+      "Bash(git -C /Users/asante/Documents/projects/ceresweb status -sb)",
+      "Bash(/Users/asante/Documents/projects/ceresweb/backend/venv/bin/pip show *)",
+      "Bash(venv/bin/python -m pytest tests/test_submissions.py -q)",
+      "Bash(kill 5144 5490)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

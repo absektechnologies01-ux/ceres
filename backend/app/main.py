@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import auth, admin, sessions, submissions, marking, schemes, institution, audit
 from app.database import engine
 from app import models
+from app.services import esp32_client
 
 # Create all tables (dev only — use Alembic in production)
 models.user.Base.metadata.create_all(bind=engine)
@@ -29,6 +30,11 @@ app.include_router(marking.router)
 app.include_router(schemes.router)
 app.include_router(institution.router)
 app.include_router(audit.router)
+
+
+@app.on_event("startup")
+def connect_esp32():
+    esp32_client.connect()
 
 
 @app.get("/health")

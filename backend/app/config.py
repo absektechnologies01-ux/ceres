@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     CHANDRA_OCR_API_URL: str
     CHANDRA_OCR_API_KEY: str
     STUDENT_ID_CONFIDENCE_THRESHOLD: float = 0.55
+    ESP32_WS_URL: str | None = None
 
     class Config:
         env_file = ".env"

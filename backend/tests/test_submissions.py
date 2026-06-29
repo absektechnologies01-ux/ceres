@@ -77,6 +77,80 @@ def test_tc18_db_write_failure_triggers_rollback_no_orphan_sheet(client, db_sess
     assert orphan is None
 
 
+def test_esp32_notified_scan_complete_on_high_confidence_id(client, db_session, marking_context, monkeypatch):
+    sent = []
+    monkeypatch.setattr("app.routers.sessions.esp32_client.send_scan_result", sent.append)
+
+    operator = marking_context["operator"]
+    session = marking_context["session"]
+    token = login(client, operator.email)
+
+    resp = client.post(
+        f"/sessions/{session.id}/sheets",
+        json={
+            "image_url": "https://ik.imagekit.io/x2uo7omcw/sheets/script-complete.jpg",
+            "ocr_text": "Student ID: 1234567890",
+            "ocr_metadata": None,
+            "upload_order": 200,
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 201
+    assert sent == ["SCAN_COMPLETE"]
+
+
+def test_esp32_notified_scan_flagged_on_low_confidence_id(client, db_session, marking_context, monkeypatch):
+    sent = []
+    monkeypatch.setattr("app.routers.sessions.esp32_client.send_scan_result", sent.append)
+
+    operator = marking_context["operator"]
+    session = marking_context["session"]
+    token = login(client, operator.email)
+
+    resp = client.post(
+        f"/sessions/{session.id}/sheets",
+        json={
+            "image_url": "https://ik.imagekit.io/x2uo7omcw/sheets/script-flagged.jpg",
+            "ocr_text": None,
+            "ocr_metadata": None,
+            "upload_order": 201,
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 201
+    assert sent == ["SCAN_FLAGGED"]
+
+
+def test_esp32_notified_scan_failed_on_processing_error(client, db_session, marking_context, monkeypatch):
+    sent = []
+    monkeypatch.setattr("app.routers.sessions.esp32_client.send_scan_result", sent.append)
+
+    def _boom(sheet, db):
+        raise RuntimeError("simulated processing failure")
+
+    monkeypatch.setattr("app.routers.sessions.process_sheet_and_group", _boom)
+
+    operator = marking_context["operator"]
+    session = marking_context["session"]
+    token = login(client, operator.email)
+
+    resp = client.post(
+        f"/sessions/{session.id}/sheets",
+        json={
+            "image_url": "https://ik.imagekit.io/x2uo7omcw/sheets/script-failed.jpg",
+            "ocr_text": None,
+            "ocr_metadata": None,
+            "upload_order": 202,
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 500
+    assert sent == ["SCAN_FAILED"]
+
+
 def test_tc20_sequential_uploads_yield_distinct_ids(client, db_session, marking_context):
     """Five uploads in immediate succession (exercising the same uuid4
     ID-generation path concurrent uploads would hit) must yield five
