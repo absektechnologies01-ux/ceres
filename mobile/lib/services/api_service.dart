@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import '../config/app_config.dart';
+import 'server_config.dart';
 import '../models/user.dart';
 import '../models/session.dart';
 import '../models/sheet.dart';
@@ -25,11 +25,17 @@ class ApiService {
         _onTokenRefreshed = onTokenRefreshed,
         _onLogout = onLogout {
     _dio = Dio(BaseOptions(
-      baseUrl: AppConfig.apiBaseUrl,
+      baseUrl: ServerConfig.apiBaseUrl,
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 30),
     ));
     _dio.interceptors.add(_buildAuthInterceptor());
+  }
+
+  /// Re-point this client at a newly paired backend without needing to
+  /// recreate the singleton (e.g. after re-pairing via ServerSetupScreen).
+  void updateBaseUrl(String url) {
+    _dio.options.baseUrl = url;
   }
 
   QueuedInterceptorsWrapper _buildAuthInterceptor() {

@@ -190,6 +190,12 @@ export interface SubmissionQuestion {
   sheet_id: string | null;
 }
 
+export interface AiSuggestion {
+  ai_answer: string;
+  suggested_score: number;
+  rationale: string;
+}
+
 // ─── Results ───────────────────────────────────────────────────────────────────
 
 export interface SessionResult {

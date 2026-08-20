@@ -3,7 +3,7 @@ import { useToastStore, type ToastType } from '../../store/toastStore';
 const TYPE_STYLES: Record<ToastType, string> = {
   info:    'bg-gray-800 text-white',
   success: 'bg-green-600 text-white',
-  warning: 'bg-amber-500 text-white',
+  warning: 'bg-blue-500 text-white',
   error:   'bg-red-600 text-white',
 };
 

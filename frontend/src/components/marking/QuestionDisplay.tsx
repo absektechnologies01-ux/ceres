@@ -1,66 +1,40 @@
-import { useState } from 'react';
-import katex from 'katex';
+import { useEffect, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import type { SubmissionQuestion, Sheet } from '../../types';
+import type { AiSuggestion, SubmissionQuestion, Sheet } from '../../types';
+import { submissionsApi } from '../../api/submissions';
+import { useMarkingStore } from '../../store/markingStore';
 import OriginalImageView from './OriginalImageView';
+import Spinner from '../ui/Spinner';
 
-/** Returns true if the string looks like an HTML document from Datalab. */
-function isHtmlContent(text: string): boolean {
-  const t = text.trimStart();
-  return t.startsWith('<!DOCTYPE') || t.startsWith('<html') || t.startsWith('<p') || t.startsWith('<ul') || t.startsWith('<ol');
-}
+const MARKDOWN_PROSE_CLASSES =
+  '[&_p]:mb-2 last:[&_p]:mb-0 ' +
+  '[&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2 [&_li]:mb-0.5 ' +
+  '[&_table]:w-full [&_table]:border-collapse [&_table]:my-2 ' +
+  '[&_th]:border [&_th]:border-gray-300 [&_th]:bg-gray-50 [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold ' +
+  '[&_td]:border [&_td]:border-gray-300 [&_td]:px-2 [&_td]:py-1.5 ' +
+  '[&_strong]:font-semibold [&_em]:italic';
 
-/** Extracts just the <body> inner content from a full HTML document. */
-function extractBodyHtml(html: string): string {
-  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  return bodyMatch ? bodyMatch[1].trim() : html;
-}
-
-/** Escapes HTML special characters so plain text is safe to inject via innerHTML. */
-function escapeHtml(text: string): string {
+/** Converts this system's \(...\)/\[...\] LaTeX delimiters (used
+ * consistently across the backend's scheme/OCR parsing and AI prompts)
+ * into the $.../$$...$$ syntax remark-math looks for. */
+function convertLatexDelimiters(text: string): string {
   return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/\n/g, '<br>');
+    .replace(/\\\[([\s\S]+?)\\\]/g, (_match, body) => `$$${body}$$`)
+    .replace(/\\\(([\s\S]+?)\\\)/g, (_match, body) => `$${body}$`);
 }
 
-/**
- * Finds LaTeX math delimiters in a string and replaces them with KaTeX-rendered
- * HTML. Handles \begin{env}...\end{env}, $$...$$, \[...\], \(...\), and $...$.
- * Falls back to the raw expression on any parse error.
- */
-function renderLatex(input: string): string {
-  const tryRender = (latex: string, display: boolean, fallback: string): string => {
-    try {
-      return katex.renderToString(latex, { displayMode: display, throwOnError: false, output: 'html' });
-    } catch {
-      return fallback;
-    }
-  };
-
-  return input
-    // \begin{env}...\end{env} — must come first to avoid partial matches
-    .replace(/\\begin\{([^}]+)\}([\s\S]+?)\\end\{\1\}/g, (match, env, body) =>
-      tryRender(`\\begin{${env}}${body}\\end{${env}}`, true, match)
-    )
-    // $$...$$ (display)
-    .replace(/\$\$([\s\S]+?)\$\$/g, (match, body) => tryRender(body, true, match))
-    // \[...\] (display)
-    .replace(/\\\[([\s\S]+?)\\\]/g, (match, body) => tryRender(body, true, match))
-    // \(...\) (inline)
-    .replace(/\\\(([\s\S]+?)\\\)/g, (match, body) => tryRender(body, false, match))
-    // $...$ (inline) — avoid matching $$
-    .replace(/(?<!\$)\$(?!\$)((?:[^$\n\\]|\\.)+?)\$(?!\$)/g, (match, body) =>
-      tryRender(body, false, match)
-    );
-}
-
-/** Prepares content for dangerouslySetInnerHTML: extracts body if HTML, escapes if plain, then renders LaTeX. */
-function prepareContent(text: string): string {
-  const base = isHtmlContent(text) ? extractBodyHtml(text) : escapeHtml(text);
-  return renderLatex(base);
+function MarkdownContent({ content, className = '' }: { content: string; className?: string }) {
+  return (
+    <div className={`${MARKDOWN_PROSE_CLASSES} ${className}`}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+        {convertLatexDelimiters(content)}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 interface QuestionDisplayProps {
@@ -77,6 +51,20 @@ export default function QuestionDisplay({
   onToggleImage,
 }: QuestionDisplayProps) {
   const [schemeExpanded, setSchemeExpanded] = useState(false);
+  const activeSubmissionId = useMarkingStore((s) => s.activeSubmissionId);
+
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<AiSuggestion | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  // Reset AI suggestion state when the active question changes — otherwise
+  // a stale suggestion from a previous question could keep showing while a
+  // different one is displayed, which would be actively misleading.
+  useEffect(() => {
+    setAiLoading(false);
+    setAiSuggestion(null);
+    setAiError(null);
+  }, [question?.question_number]);
 
   if (!question) {
     return (
@@ -85,6 +73,20 @@ export default function QuestionDisplay({
       </div>
     );
   }
+
+  const handleGetAiSuggestion = async () => {
+    if (!activeSubmissionId) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const result = await submissionsApi.getAiSuggestion(activeSubmissionId, question);
+      setAiSuggestion(result);
+    } catch {
+      setAiError('Could not get an AI suggestion right now. Please try again.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -128,10 +130,7 @@ export default function QuestionDisplay({
             {question.question_text && (
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Question</p>
-                <div
-                  className="text-sm text-gray-900 leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: prepareContent(question.question_text) }}
-                />
+                <MarkdownContent content={question.question_text} className="text-sm text-gray-900 leading-relaxed" />
               </div>
             )}
 
@@ -139,10 +138,7 @@ export default function QuestionDisplay({
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Student's Answer</p>
               {question.text_content && question.text_content !== 'No answer found for this question.' ? (
-                <div
-                  className="text-sm text-gray-800 leading-relaxed [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2 [&_li]:mb-0.5"
-                  dangerouslySetInnerHTML={{ __html: prepareContent(question.text_content) }}
-                />
+                <MarkdownContent content={question.text_content} className="text-sm text-gray-800 leading-relaxed" />
               ) : (
                 <div className="rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700">
                   No answer found for this question.
@@ -168,13 +164,77 @@ export default function QuestionDisplay({
                   Marking Scheme Answer
                 </button>
                 {schemeExpanded && (
-                  <div
+                  <MarkdownContent
+                    content={question.expected_answer}
                     className="mt-2 rounded-md bg-blue-50 border border-blue-100 px-4 py-3 text-sm text-blue-900 leading-relaxed"
-                    dangerouslySetInnerHTML={{ __html: prepareContent(question.expected_answer) }}
                   />
                 )}
               </div>
             )}
+
+            {/* AI suggestion — advisory only, on-demand */}
+            <div className="border-t border-gray-100 pt-4">
+              {!aiSuggestion && (
+                <button
+                  onClick={handleGetAiSuggestion}
+                  disabled={aiLoading}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors
+                    border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-primary hover:text-primary
+                    focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+                >
+                  {aiLoading ? (
+                    <>
+                      <Spinner size="sm" />
+                      Getting AI suggestion…
+                    </>
+                  ) : (
+                    'Get AI Suggestion'
+                  )}
+                </button>
+              )}
+
+              {aiError && (
+                <div className="mt-2 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                  {aiError}
+                </div>
+              )}
+
+              {aiSuggestion && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                      AI Suggestion (advisory only — not saved)
+                    </p>
+                    <button
+                      onClick={handleGetAiSuggestion}
+                      disabled={aiLoading}
+                      className="text-xs text-primary hover:underline focus:outline-none disabled:opacity-50"
+                    >
+                      {aiLoading ? 'Refreshing…' : 'Regenerate'}
+                    </button>
+                  </div>
+
+                  <div className="rounded-md bg-purple-50 border border-purple-100 px-4 py-3">
+                    <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1">
+                      Independent AI Answer
+                    </p>
+                    <MarkdownContent content={aiSuggestion.ai_answer} className="text-sm text-purple-900 leading-relaxed" />
+                  </div>
+
+                  <div className="rounded-md bg-purple-50 border border-purple-100 px-4 py-3">
+                    <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1">
+                      Suggested Score
+                    </p>
+                    <p className="text-sm font-semibold text-purple-900">
+                      {aiSuggestion.suggested_score} / {question.max_marks}
+                    </p>
+                    {aiSuggestion.rationale && (
+                      <p className="text-sm text-purple-800 mt-1 leading-relaxed">{aiSuggestion.rationale}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

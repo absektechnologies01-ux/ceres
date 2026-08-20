@@ -1,10 +1,19 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'server_config.dart';
 import '../config/app_config.dart';
 import '../models/user.dart';
 
 class AuthService {
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
+
+  // Bare Dio() has no connect timeout, so an unreachable server (wrong
+  // network, dead host) hangs on the OS's own TCP timeout — tens of
+  // seconds to minutes — instead of failing fast.
+  final Dio _dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 10),
+    receiveTimeout: const Duration(seconds: 15),
+  ));
 
   // ── Token storage ─────────────────────────────────────────────────────────
 
@@ -34,9 +43,8 @@ class AuthService {
     String email,
     String password,
   ) async {
-    final dio = Dio();
-    final response = await dio.post(
-      '${AppConfig.apiBaseUrl}/auth/login',
+    final response = await _dio.post(
+      '${ServerConfig.apiBaseUrl}/auth/login',
       data: {'username': email, 'password': password},
       options: Options(contentType: Headers.formUrlEncodedContentType),
     );
@@ -58,9 +66,8 @@ class AuthService {
   // ── Refresh ───────────────────────────────────────────────────────────────
 
   Future<String> refreshAccessToken(String refreshToken) async {
-    final dio = Dio();
-    final response = await dio.post(
-      '${AppConfig.apiBaseUrl}/auth/refresh',
+    final response = await _dio.post(
+      '${ServerConfig.apiBaseUrl}/auth/refresh',
       data: {'refresh_token': refreshToken},
     );
     return (response.data as Map<String, dynamic>)['access_token'] as String;

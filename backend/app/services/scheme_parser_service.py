@@ -3,6 +3,9 @@ import io
 from typing import List, Dict
 import pdfplumber
 from docx import Document as DocxDocument
+from docx.oxml.ns import qn
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 
 
 def parse_scheme_file(file_content: bytes, filename: str) -> List[Dict]:
@@ -140,41 +143,84 @@ def _omml_to_latex(elem) -> str:
     return ch(elem)
 
 
-def _extract_docx_text(content: bytes) -> str:
+def _iter_block_items(doc: DocxDocument):
+    """Yields Paragraph/Table objects from the document body in the order
+    they actually appear — doc.paragraphs and doc.tables each only give one
+    type and lose the interleaving, which matters here since a table (e.g.
+    an answer given as a comparison table) can sit between two questions."""
+    for child in doc.element.body.iterchildren():
+        if child.tag == qn('w:p'):
+            yield Paragraph(child, doc)
+        elif child.tag == qn('w:tbl'):
+            yield Table(child, doc)
+
+
+def _paragraph_text(p: Paragraph) -> str:
     """
-    Extracts text from a DOCX file, converting Word equation-editor (OMML)
-    blocks to LaTeX so that KaTeX can render them in the frontend.
+    Extracts text from a single paragraph, converting Word equation-editor
+    (OMML) blocks to LaTeX so that KaTeX can render them in the frontend.
 
     - <m:oMathPara>  (display/centred equation) → wrapped in \\[...\\]
     - <m:oMath>       (inline equation)          → wrapped in \\(...\\)
     - <w:r>           (regular text run)          → plain text
     """
+    parts = []
+    for child in p._element:
+        ns = child.tag.split('}')[0].lstrip('{') if '}' in child.tag else ''
+        local = child.tag.split('}')[1] if '}' in child.tag else child.tag
+
+        if ns == _W and local == 'r':
+            # Regular text run
+            for t_elem in child.iter(f'{{{_W}}}t'):
+                parts.append(t_elem.text or '')
+
+        elif ns == _M and local == 'oMathPara':
+            # Display (centred) equation
+            inner = child.find(f'{{{_M}}}oMath')
+            latex = _omml_to_latex(inner if inner is not None else child)
+            parts.append(f'\\[{latex}\\]')
+
+        elif ns == _M and local == 'oMath':
+            # Inline equation
+            latex = _omml_to_latex(child)
+            parts.append(f'\\({latex}\\)')
+
+    return ''.join(parts)
+
+
+def _escape_md_cell(text: str) -> str:
+    """Escapes markdown/table-syntax-significant characters so scheme
+    content (e.g. a literal '*' or '_') displays literally instead of
+    being misread as formatting or breaking the table's column
+    delimiters, and collapses any embedded newlines (invalid inside a
+    single markdown table cell)."""
+    text = re.sub(r'\s*\n\s*', ' ', text.strip())
+    return re.sub(r'([\\|*_`])', r'\\\1', text)
+
+
+def _extract_docx_text(content: bytes) -> str:
+    """Extracts text from a DOCX file, walking paragraphs and tables in
+    document order so table-based answers (e.g. a comparison table) aren't
+    silently dropped — doc.paragraphs alone excludes table cell content.
+    Tables are emitted as GFM markdown so they render as an actual table
+    in the frontend instead of plain 'cellA | cellB' text."""
     doc = DocxDocument(io.BytesIO(content))
-    paragraphs = []
-    for p in doc.paragraphs:
-        parts = []
-        for child in p._element:
-            ns = child.tag.split('}')[0].lstrip('{') if '}' in child.tag else ''
-            local = child.tag.split('}')[1] if '}' in child.tag else child.tag
-
-            if ns == _W and local == 'r':
-                # Regular text run
-                for t_elem in child.iter(f'{{{_W}}}t'):
-                    parts.append(t_elem.text or '')
-
-            elif ns == _M and local == 'oMathPara':
-                # Display (centred) equation
-                inner = child.find(f'{{{_M}}}oMath')
-                latex = _omml_to_latex(inner if inner is not None else child)
-                parts.append(f'\\[{latex}\\]')
-
-            elif ns == _M and local == 'oMath':
-                # Inline equation
-                latex = _omml_to_latex(child)
-                parts.append(f'\\({latex}\\)')
-
-        paragraphs.append(''.join(parts))
-    return '\n'.join(paragraphs)
+    lines = []
+    for block in _iter_block_items(doc):
+        if isinstance(block, Table):
+            rows = [[_escape_md_cell(cell.text) for cell in row.cells] for row in block.rows]
+            rows = [r for r in rows if any(r)]
+            if rows:
+                col_count = max(len(r) for r in rows)
+                padded = [r + [''] * (col_count - len(r)) for r in rows]
+                table_lines = ['| ' + ' | '.join(r) + ' |' for r in padded]
+                table_lines.insert(1, '|' + '|'.join([' --- '] * col_count) + '|')
+                lines.append('')
+                lines.extend(table_lines)
+                lines.append('')
+        else:
+            lines.append(_paragraph_text(block))
+    return '\n'.join(lines)
 
 
 def _parse_scheme_text(text: str) -> List[Dict]:
@@ -221,8 +267,17 @@ def _parse_scheme_text(text: str) -> List[Dict]:
         else:
             max_marks = 0.0
 
+        # The question wording is very often on the same line as the "Q1."
+        # header itself (e.g. "Q1. What is Polymorphism? (10 marks)") rather
+        # than on its own line below — strip the marks annotation and the
+        # leftover separator punctuation, then treat it as the first line of
+        # the question body so it isn't silently dropped from question_text.
+        header_wording = MARKS_RE.sub('', rest_of_header)
+        header_wording = re.sub(r'^[\s.:\-]+', '', header_wording).strip()
+
         body = '\n'.join(lines[line_no + 1:next_line_no]).strip()
-        question_text, expected_answer = _split_question_body(body)
+        full_body = f'{header_wording}\n{body}' if header_wording else body
+        question_text, expected_answer = _split_question_body(full_body)
 
         questions.append({
             "question_number": q_num,
@@ -244,7 +299,7 @@ def _split_question_body(body: str):
     If no such separator is found, the whole body is question_text and expected_answer is ''.
     """
     ANSWER_PREFIX = re.compile(
-        r'^(?:expected\s+answer|model\s+answer|answer)[:\s]',
+        r'^(?:expected\s+answer|model\s+answer|answer)[:\s]+',
         re.IGNORECASE
     )
     lines = body.split('\n')

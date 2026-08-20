@@ -23,4 +23,9 @@ export const markingApi = {
 
   getResults: (sessionId: string) =>
     api.get<SessionResult[]>(`/sessions/${sessionId}/results`).then(r => r.data),
+
+  downloadReport: (sessionId: string) =>
+    api
+      .get(`/sessions/${sessionId}/report`, { responseType: 'blob' })
+      .then(r => r.data as Blob),
 };

@@ -10,8 +10,10 @@ from app.models.session import ScanSession
 from app.models.submission import Submission, Sheet
 from app.models.marking import MarkingScheme
 from app.models.institution import TeacherAssignment
-from app.schemas.submission import SubmissionOut, SubmissionQuestion
+from app.schemas.submission import SubmissionOut, SubmissionQuestion, AiSuggestionRequest, AiSuggestionResponse
 from app.utils.question_detector import detect_questions
+from app.services import ai_suggestion_service
+from app.services.ai_suggestion_service import AiSuggestionError
 
 router = APIRouter(tags=["submissions"])
 
@@ -123,3 +125,48 @@ def get_submission_questions(
         ))
 
     return result
+
+
+@router.post(
+    "/submissions/{submission_id}/questions/{question_number}/ai-suggestion",
+    response_model=AiSuggestionResponse,
+)
+async def get_ai_suggestion(
+    submission_id: uuid.UUID,
+    question_number: str,
+    body: AiSuggestionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    On-demand, advisory-only AI grading aid. Generates an independent AI
+    answer to the question (without showing it the marking scheme's
+    expected answer), then suggests a score by comparing the student's
+    answer against both the expected answer and that independent answer.
+    Never persisted — the teacher still enters the real score manually.
+    """
+    submission = db.query(Submission).filter(Submission.id == submission_id).first()
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    session = _get_session_or_404(submission.session_id, db)
+    if current_user.role == UserRole.teacher:
+        _check_teacher_access(session, current_user, db)
+
+    try:
+        ai_answer = await ai_suggestion_service.generate_independent_answer(body.question_text)
+        result = await ai_suggestion_service.suggest_score(
+            question_text=body.question_text,
+            max_marks=body.max_marks,
+            expected_answer=body.expected_answer,
+            ai_answer=ai_answer,
+            student_answer=body.student_answer,
+        )
+    except AiSuggestionError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return AiSuggestionResponse(
+        ai_answer=ai_answer,
+        suggested_score=result["score"],
+        rationale=result["rationale"],
+    )

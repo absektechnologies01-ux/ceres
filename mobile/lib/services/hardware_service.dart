@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import '../config/app_config.dart';
+import 'server_config.dart';
 
 enum HardwareEvent { paperDetected }
 
@@ -37,7 +37,7 @@ class HardwareService {
   void _tryConnect() {
     if (_disposed) return;
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(AppConfig.esp32WsUrl));
+      _channel = WebSocketChannel.connect(Uri.parse(ServerConfig.esp32WsUrl));
       _channelSub = _channel!.stream.listen(
         _onMessage,
         onError: (_) => _scheduleReconnect(),

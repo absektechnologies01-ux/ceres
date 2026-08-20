@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
@@ -60,9 +61,15 @@ class AuthProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       final msg = e.toString();
+      final unreachable = e is DioException &&
+          (e.type == DioExceptionType.connectionTimeout ||
+              e.type == DioExceptionType.receiveTimeout ||
+              e.type == DioExceptionType.sendTimeout ||
+              e.type == DioExceptionType.connectionError);
       if (msg.contains('401') || msg.contains('400')) {
         _error = 'Invalid credentials. Please try again.';
-      } else if (msg.contains('SocketException') ||
+      } else if (unreachable ||
+          msg.contains('SocketException') ||
           msg.contains('Connection refused') ||
           msg.contains('Network is unreachable') ||
           msg.contains('Failed host lookup')) {

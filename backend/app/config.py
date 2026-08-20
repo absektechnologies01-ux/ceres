@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     CHANDRA_OCR_API_KEY: str
     STUDENT_ID_CONFIDENCE_THRESHOLD: float = 0.55
     ESP32_WS_URL: str | None = None
+    API_PORT: int = 8000
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_API_URL: str = "https://api.deepseek.com/chat/completions"
 
     class Config:
         env_file = ".env"

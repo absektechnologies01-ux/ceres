@@ -9,6 +9,8 @@ import Badge from '../../components/ui/Badge';
 import Table from '../../components/ui/Table';
 import Spinner from '../../components/ui/Spinner';
 import { formatMarks } from '../../utils/markingHelpers';
+import { useToastStore } from '../../store/toastStore';
+import { downloadBlob, extractErrorMessage } from '../../utils/download';
 
 function exportResultsCSV(results: SessionResult[], sessionName: string) {
   const header = ['Student ID', 'Total Score', 'Max Score', 'Percentage', 'Status'];
@@ -37,6 +39,8 @@ export default function SessionOverviewPage() {
   const [resolveInputs, setResolveInputs] = useState<Record<string, string>>({});
   const [resolving, setResolving] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const { showToast } = useToastStore();
 
   const fetchData = () => {
     if (!id) return;
@@ -58,6 +62,19 @@ export default function SessionOverviewPage() {
   };
 
   useEffect(fetchData, [id]);
+
+  const handleGenerateReport = async () => {
+    if (!id) return;
+    setGeneratingReport(true);
+    try {
+      const blob = await markingApi.downloadReport(id);
+      downloadBlob(blob, `${id}_report.pdf`);
+    } catch (error) {
+      showToast(await extractErrorMessage(error, 'Could not generate the report. Please try again.'), 'error');
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
 
   const handleResolve = async (sheetId: string) => {
     const studentId = resolveInputs[sheetId]?.trim();
@@ -115,6 +132,22 @@ export default function SessionOverviewPage() {
             {results.length > 0 && (
               <Button variant="secondary" size="sm" onClick={() => exportResultsCSV(results, id ?? 'session')}>
                 Export CSV
+              </Button>
+            )}
+            {results.length > 0 && (
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={generatingReport}
+                disabled={totalMarked < results.length}
+                title={
+                  totalMarked < results.length
+                    ? `${results.length - totalMarked} student(s) still need marking before a report can be generated`
+                    : undefined
+                }
+                onClick={handleGenerateReport}
+              >
+                Generate Report
               </Button>
             )}
             <Link to={`/teacher/sessions/${id}/scheme`}>

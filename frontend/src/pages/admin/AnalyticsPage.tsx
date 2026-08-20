@@ -58,7 +58,7 @@ export default function AnalyticsPage() {
 
   return (
     <div>
-      <TopBar title="Analytics" showBack />
+      <TopBar title="Analytics" backTo="/admin" />
       <div className="p-6 space-y-6">
 
         {/* System-wide stat cards */}
@@ -172,7 +172,7 @@ export default function AnalyticsPage() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                       <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                       <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} unit="%" />
-                      <Tooltip formatter={(v: number) => `${v.toFixed(1)}%`} />
+                      <Tooltip formatter={(v) => `${Number(v).toFixed(1)}%`} />
                       <ReferenceLine y={50} stroke="#ef4444" strokeDasharray="4 2" label={{ value: '50%', fontSize: 10, fill: '#ef4444' }} />
                       <Bar dataKey="avg_pct" fill="#10b981" radius={[3, 3, 0, 0]} name="Avg %" />
                     </BarChart>

@@ -7,9 +7,9 @@ import { auditApi } from '../../api/audit';
 import type { AuditSession, ReviewStatus } from '../../types';
 
 function ReviewBadge({ status }: { status: ReviewStatus }) {
-  if (status === 'approved') return <Badge variant="success">Approved</Badge>;
-  if (status === 'rejected') return <Badge variant="danger">Rejected</Badge>;
-  return <Badge variant="default">Pending Review</Badge>;
+  if (status === 'approved') return <Badge variant="success" label="Approved" />;
+  if (status === 'rejected') return <Badge variant="danger" label="Rejected" />;
+  return <Badge variant="default" label="Pending Review" />;
 }
 
 export default function AuditPage() {

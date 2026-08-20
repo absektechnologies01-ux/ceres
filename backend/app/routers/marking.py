@@ -1,6 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, Response
+from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from xhtml2pdf import pisa
+import io
+import re
 import uuid
 
 from app.database import get_db
@@ -11,8 +18,14 @@ from app.models.submission import Submission, SubmissionStatus
 from app.models.marking import MarkingScheme, QuestionScore
 from app.models.institution import TeacherAssignment
 from app.schemas.marking import ScoreInput, CommentInput, QuestionScoreOut, SessionResult
+from app.services import ai_suggestion_service
+from app.services.ai_suggestion_service import AiSuggestionError
+from app.utils.latex_plaintext import simplify_latex_for_pdf
 
 router = APIRouter(tags=["marking"])
+
+_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+_jinja_env = Environment(loader=FileSystemLoader(str(_TEMPLATES_DIR)))
 
 
 def _get_session_or_404(session_id: uuid.UUID, db: Session) -> ScanSession:
@@ -203,3 +216,114 @@ def get_session_results(
         )
         for sub in submissions
     ]
+
+
+# ─── Report ─────────────────────────────────────────────────────────────────
+
+@router.get("/sessions/{session_id}/report")
+async def get_session_report(
+    session_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.teacher)),
+):
+    """
+    Generates a downloadable PDF report for the session: class summary
+    stats, per-question performance breakdown, AI-generated class-wide
+    teaching insights, and the full student results table. Only available
+    once every student's submission has been fully marked.
+    """
+    session = _get_session_or_404(session_id, db)
+    _check_teacher_access(session, current_user, db)
+
+    submissions = db.query(Submission).filter(Submission.session_id == session_id).all()
+    if not submissions:
+        raise HTTPException(status_code=400, detail="No submissions in this session yet.")
+
+    unmarked = [s for s in submissions if s.status != SubmissionStatus.marked]
+    if unmarked:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{len(unmarked)} of {len(submissions)} student(s) are not fully marked yet.",
+        )
+
+    scheme = db.query(MarkingScheme).filter(MarkingScheme.session_id == session_id).first()
+    scheme_questions = scheme.questions if scheme else []
+    max_possible = sum(float(q.get("max_marks", 0)) for q in scheme_questions)
+
+    results = [
+        SessionResult(
+            student_id=sub.student_id,
+            total_score=sub.total_score,
+            max_possible=max_possible,
+            status=sub.status,
+            submission_id=sub.id,
+        )
+        for sub in submissions
+    ]
+
+    scores = [r.total_score for r in results if r.total_score is not None]
+    average_score = sum(scores) / len(scores) if scores else 0.0
+    highest_score = max(scores) if scores else 0.0
+    lowest_score = min(scores) if scores else 0.0
+
+    # Per-question class stats, aggregated from every submission's scores
+    all_scores = (
+        db.query(QuestionScore)
+        .join(Submission)
+        .filter(Submission.session_id == session_id)
+        .all()
+    )
+    scores_by_question: dict = {}
+    for qs in all_scores:
+        if qs.awarded_marks is not None:
+            scores_by_question.setdefault(qs.question_number, []).append(qs.awarded_marks)
+
+    question_stats = []
+    for q in scheme_questions:
+        qnum = str(q["question_number"])
+        vals = scores_by_question.get(qnum, [])
+        question_stats.append({
+            "label": q.get("label_variants", [f"Q{qnum}"])[0],
+            "question_text": simplify_latex_for_pdf(q.get("question_text") or ""),
+            "max_marks": float(q.get("max_marks", 0)),
+            "average_score": sum(vals) / len(vals) if vals else 0.0,
+            "min_score": min(vals) if vals else 0.0,
+            "max_score": max(vals) if vals else 0.0,
+        })
+
+    class_name = session.class_.name
+    course_name = session.course.name
+
+    try:
+        ai_insights = await ai_suggestion_service.generate_class_insights(
+            question_stats, class_name, course_name
+        )
+    except AiSuggestionError as exc:
+        ai_insights = f"AI insights unavailable: {exc}"
+    ai_insights_paragraphs = [p.strip() for p in ai_insights.split("\n") if p.strip()]
+
+    template = _jinja_env.get_template("session_report.html")
+    html = template.render(
+        class_name=class_name,
+        course_name=course_name,
+        teacher_name=current_user.name,
+        generated_at=datetime.utcnow().strftime("%d %b %Y, %H:%M UTC"),
+        total_students=len(results),
+        average_score=average_score,
+        highest_score=highest_score,
+        lowest_score=lowest_score,
+        max_possible=max_possible,
+        question_stats=question_stats,
+        ai_insights_paragraphs=ai_insights_paragraphs,
+        results=results,
+    )
+
+    buf = io.BytesIO()
+    pisa.CreatePDF(html, dest=buf)
+
+    safe_name = re.sub(r'[^A-Za-z0-9_-]+', '_', f"{course_name}_{class_name}_report").strip('_')
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.pdf"'},
+    )

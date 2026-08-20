@@ -10,9 +10,9 @@ import { formatMarks } from '../../utils/markingHelpers';
 import type { AuditSessionDetail, AuditSubmission, ReviewStatus } from '../../types';
 
 function ReviewBadge({ status }: { status: ReviewStatus }) {
-  if (status === 'approved') return <Badge variant="success">Approved</Badge>;
-  if (status === 'rejected') return <Badge variant="danger">Rejected</Badge>;
-  return <Badge variant="default">Pending Review</Badge>;
+  if (status === 'approved') return <Badge variant="success" label="Approved" />;
+  if (status === 'rejected') return <Badge variant="danger" label="Rejected" />;
+  return <Badge variant="default" label="Pending Review" />;
 }
 
 function exportResultsCSV(detail: AuditSessionDetail) {
@@ -89,14 +89,14 @@ export default function AuditSessionPage() {
 
   if (loading) return (
     <div>
-      <TopBar title="Audit Session" showBack />
+      <TopBar title="Audit Session" backTo="/admin/audit" />
       <div className="flex justify-center py-16"><Spinner /></div>
     </div>
   );
 
   if (!detail) return (
     <div>
-      <TopBar title="Audit Session" showBack />
+      <TopBar title="Audit Session" backTo="/admin/audit" />
       <p className="p-6 text-red-600">Session not found.</p>
     </div>
   );
@@ -105,7 +105,7 @@ export default function AuditSessionPage() {
 
   return (
     <div className="flex flex-col h-screen">
-      <TopBar title={`${detail.class_name} — ${detail.course_name}`} showBack />
+      <TopBar title={`${detail.class_name} — ${detail.course_name}`} backTo="/admin/audit" />
 
       {/* Review status banner */}
       {detail.review_status === 'approved' && (
@@ -235,30 +235,28 @@ export default function AuditSessionPage() {
       </div>
 
       {/* Reject modal */}
-      {rejectModal && (
-        <Modal title="Reject Marking" onClose={() => setRejectModal(false)}>
-          <p className="text-sm text-gray-600 mb-3">Provide a reason so the teacher knows what to revise.</p>
-          <textarea
-            value={rejectNote}
-            onChange={e => setRejectNote(e.target.value)}
-            rows={4}
-            placeholder="e.g. Question 3b scores appear too generous — please review."
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-          />
-          <div className="mt-4 flex justify-end gap-2">
-            <button onClick={() => setRejectModal(false)} className="text-sm px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
-              Cancel
-            </button>
-            <button
-              onClick={handleReject}
-              disabled={!rejectNote.trim() || acting}
-              className="text-sm px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
-            >
-              {acting ? 'Sending…' : 'Send Back'}
-            </button>
-          </div>
-        </Modal>
-      )}
+      <Modal open={rejectModal} title="Reject Marking" onClose={() => setRejectModal(false)}>
+        <p className="text-sm text-gray-600 mb-3">Provide a reason so the teacher knows what to revise.</p>
+        <textarea
+          value={rejectNote}
+          onChange={e => setRejectNote(e.target.value)}
+          rows={4}
+          placeholder="e.g. Question 3b scores appear too generous — please review."
+          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={() => setRejectModal(false)} className="text-sm px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button
+            onClick={handleReject}
+            disabled={!rejectNote.trim() || acting}
+            className="text-sm px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+          >
+            {acting ? 'Sending…' : 'Send Back'}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

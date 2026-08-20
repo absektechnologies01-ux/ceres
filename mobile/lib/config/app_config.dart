@@ -1,9 +1,4 @@
 class AppConfig {
-  // Backend API base URL — update for production
-  // static const String apiBaseUrl = 'http://10.0.2.2:8000'; // Android emulator → host localhost
-  // static const String apiBaseUrl = 'http://localhost:8000'; // iOS simulator
-  static const String apiBaseUrl = 'http://10.238.242.162:8000'; // physical device via hotspot
-
   // ImageKit configuration
   static const String imagekitPublicKey = 'public_Kto9TlcMV+9ep5+d65JCb0yq9Ko=';
   static const String imagekitPrivateKey = 'private_EvS4dGJx48Ft3CjWclfAAdT/KgI=';
@@ -13,12 +8,6 @@ class AppConfig {
   // Chandra OCR API
   static const String chandraOcrUrl = 'https://www.datalab.to/api/v1/convert';
   static const String chandraOcrApiKey = 'Amp3EQbz3GakyNV1ChY_p_GbB5fv3J38pnNO3YozWJY';
-
-  // ESP32 WebSocket server — update IP to match the ESP32's address on the hotspot
-  // static const String esp32WsUrl = 'ws://192.168.1.100:81'; // typical router-assigned
- // static const String esp32WsUrl = 'ws://10.174.70.156:81'; // physical device via hotspot PRINCE'S PHONE 
-    static const String esp32WsUrl = 'ws://10.238.242.156:81'; // physical device via hotspot
-
 
   // Ceres brand colour
   static const int primaryColor = 0xFF1D4ED8;

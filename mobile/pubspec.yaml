@@ -33,6 +33,9 @@ dependencies:
   # WebSocket client for ESP32 hardware bridge
   web_socket_channel: ^3.0.1
 
+  # QR code scanning for server pairing
+  mobile_scanner: ^6.0.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

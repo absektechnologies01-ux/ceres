@@ -1,4 +1,13 @@
-type BadgeVariant = 'pending' | 'in_progress' | 'marked' | 'flagged' | 'active' | 'closed';
+type BadgeVariant =
+  | 'pending'
+  | 'in_progress'
+  | 'marked'
+  | 'flagged'
+  | 'active'
+  | 'closed'
+  | 'success'
+  | 'danger'
+  | 'default';
 
 interface BadgeProps {
   variant: BadgeVariant;
@@ -13,6 +22,9 @@ const variantClasses: Record<BadgeVariant, string> = {
   flagged: 'bg-amber-100 text-amber-700',
   active: 'bg-green-100 text-green-700',
   closed: 'bg-gray-100 text-gray-600',
+  success: 'bg-green-100 text-green-700',
+  danger: 'bg-red-100 text-red-700',
+  default: 'bg-gray-100 text-gray-600',
 };
 
 const defaultLabels: Record<BadgeVariant, string> = {
@@ -22,6 +34,9 @@ const defaultLabels: Record<BadgeVariant, string> = {
   flagged: 'Flagged',
   active: 'Active',
   closed: 'Closed',
+  success: 'Success',
+  danger: 'Error',
+  default: 'Default',
 };
 
 export default function Badge({ variant, label, className = '' }: BadgeProps) {

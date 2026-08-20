@@ -1,17 +1,127 @@
 import re
-from typing import List, Dict
+from typing import List, Dict, Optional
+
+from lxml import etree
+from lxml import html as lxml_html
 
 QUESTION_LABEL_PATTERN = re.compile(
     r'(?:^|\n)\s*((?:Q|q|Question|question|QUESTION)\s*\.?\s*(\d+[a-zA-Z]?))\b',
     re.MULTILINE
 )
 _HTML_TAG_RE = re.compile(r'<[^>]+>')
+_BLOCK_BOUNDARY_RE = re.compile(
+    r'<br\s*/?>|</(?:p|div|li|tr|h[1-6])\s*>',
+    re.IGNORECASE
+)
+
+
+def _clean_text(s: Optional[str]) -> str:
+    return re.sub(r'\s+', ' ', s or '').strip()
+
+
+def _replace_with_text(el, text: str) -> None:
+    """Replaces an lxml element in-place with a plain text node, merging
+    it into the previous sibling's tail (or the parent's text, if it's the
+    first child) so the surrounding structure is preserved for the rest of
+    the block-boundary/tag-stripping pass."""
+    parent = el.getparent()
+    if parent is None:
+        return
+    tail = el.tail or ''
+    prev = el.getprevious()
+    if prev is not None:
+        prev.tail = (prev.tail or '') + text + tail
+    else:
+        parent.text = (parent.text or '') + text + tail
+    parent.remove(el)
+
+
+def _convert_math_tags(root) -> None:
+    """Converts Datalab OCR's <math>/<math display="block"> tags into the
+    \\(...\\) / \\[...\\] delimiters the frontend's KaTeX renderer looks
+    for. Stripping them as plain tags (the old behaviour) discarded the
+    only signal that the enclosed text was math at all, so it rendered as
+    literal backslash-LaTeX source instead of a formula."""
+    for math_el in list(root.iter('math')):
+        latex = _clean_text(math_el.text_content())
+        if not latex:
+            _replace_with_text(math_el, '')
+            continue
+        wrapped = f'\\[{latex}\\]' if math_el.get('display') == 'block' else f'\\({latex}\\)'
+        _replace_with_text(math_el, wrapped)
+
+
+def _cell_lines(cell) -> List[str]:
+    """One 'line' per <li> if the cell holds a bulleted list, else one
+    line for the whole cell — keeps list items aligned by index with
+    their counterpart in a sibling cell instead of losing the row
+    pairing (which is what happens if each cell's list is just flattened
+    independently)."""
+    items = cell.findall('.//li')
+    if items:
+        return [_clean_text(li.text_content()) for li in items] or ['']
+    return [_clean_text(cell.text_content())]
+
+
+def _escape_md_cell(text: str) -> str:
+    """Escapes markdown/table-syntax-significant characters so OCR'd cell
+    content (e.g. a literal '*' or '_' in the student's answer) displays
+    literally instead of being misread as formatting or breaking the
+    table's column delimiters."""
+    return re.sub(r'([\\|*_`])', r'\\\1', text)
+
+
+def _convert_tables(root) -> None:
+    """Converts <table> elements into a GFM markdown table, pairing cells
+    row-by-row (and list items within a cell index-by-index) so a
+    two-column comparison table renders as an actual table in the
+    frontend instead of flattening into disconnected bullet lists or
+    plain 'cellA | cellB' text lines."""
+    for table in list(root.iter('table')):
+        rows = []
+        for row in table.findall('.//tr'):
+            cells = row.findall('./td') + row.findall('./th')
+            if not cells:
+                continue
+            per_cell = [_cell_lines(c) for c in cells]
+            for i in range(max(len(c) for c in per_cell)):
+                rows.append([_escape_md_cell(c[i] if i < len(c) else '') for c in per_cell])
+
+        if not rows:
+            continue
+
+        col_count = max(len(r) for r in rows)
+        padded = [r + [''] * (col_count - len(r)) for r in rows]
+        lines = ['| ' + ' | '.join(r) + ' |' for r in padded]
+        lines.insert(1, '|' + '|'.join([' --- '] * col_count) + '|')
+        _replace_with_text(table, '\n\n' + '\n'.join(lines) + '\n\n')
 
 
 def _strip_html(text: str) -> str:
-    """Strip HTML tags and decode common entities to plain text."""
-    plain = _HTML_TAG_RE.sub(' ', text)
+    """Strip HTML tags and decode common entities to plain text.
+
+    Runs a structural pass first (via lxml) to convert <math> tags into
+    KaTeX-recognized delimiters and flatten <table> rows into paired text
+    lines — both would otherwise be destroyed by naive tag-stripping.
+    Block-level boundaries (paragraph/line/row breaks) become newlines
+    next, since detect_questions() anchors question labels to the start
+    of a line — collapsing everything to spaces would merge every
+    question after the first into one line, hiding them from the matcher.
+    Falls back to the plain regex pass alone if the input isn't parseable
+    as HTML (e.g. it's already plain text).
+    """
+    try:
+        root = lxml_html.fromstring(text)
+        _convert_math_tags(root)
+        _convert_tables(root)
+        text = etree.tostring(root, method='html', encoding='unicode')
+    except (etree.ParserError, ValueError):
+        pass
+
+    with_breaks = _BLOCK_BOUNDARY_RE.sub('\n', text)
+    plain = _HTML_TAG_RE.sub(' ', with_breaks)
     plain = plain.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&nbsp;', ' ')
+    plain = re.sub(r'[^\S\n]*\n[^\S\n]*', '\n', plain)
     plain = re.sub(r'\n{3,}', '\n\n', plain)
     return plain
 

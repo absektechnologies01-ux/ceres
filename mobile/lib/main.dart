@@ -4,11 +4,14 @@ import 'config/app_config.dart';
 import 'providers/auth_provider.dart';
 import 'providers/session_provider.dart';
 import 'services/api_service.dart';
+import 'services/server_config.dart';
 import 'screens/login_screen.dart';
+import 'screens/server_setup_screen.dart';
 import 'screens/session_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await ServerConfig.load();
   runApp(const CeresApp());
 }
 
@@ -84,6 +87,10 @@ class _AppRootState extends State<_AppRoot> {
           ),
         ),
       );
+    }
+
+    if (!ServerConfig.isConfigured) {
+      return ServerSetupScreen(onPaired: () => setState(() {}));
     }
 
     final auth = context.watch<AuthProvider>();

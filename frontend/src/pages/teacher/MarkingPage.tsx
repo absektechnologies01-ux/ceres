@@ -3,14 +3,18 @@ import { useParams, Link } from 'react-router-dom';
 import { submissionsApi } from '../../api/submissions';
 import { schemesApi } from '../../api/schemes';
 import { sessionsApi } from '../../api/sessions';
+import { markingApi } from '../../api/marking';
 import type { Submission, SubmissionQuestion, Sheet, MarkingScheme, ScanSession } from '../../types';
 import { useMarkingStore } from '../../store/markingStore';
+import { useToastStore } from '../../store/toastStore';
+import { downloadBlob, extractErrorMessage } from '../../utils/download';
 
 import StudentList from '../../components/marking/StudentList';
 import QuestionDisplay from '../../components/marking/QuestionDisplay';
 import ScorePanel from '../../components/marking/ScorePanel';
 import KeyboardHandler from '../../components/marking/KeyboardHandler';
 import Spinner from '../../components/ui/Spinner';
+import Button from '../../components/ui/Button';
 
 export default function MarkingPage() {
   const { id: sessionId } = useParams<{ id: string }>();
@@ -31,6 +35,8 @@ export default function MarkingPage() {
   const [scheme, setScheme] = useState<MarkingScheme | null>(null);
   const [loadingSubmissions, setLoadingSubmissions] = useState(true);
   const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const { showToast } = useToastStore();
 
   // Load submissions + scheme on mount
   useEffect(() => {
@@ -85,8 +91,22 @@ export default function MarkingPage() {
     loadSubmission(submissionId);
   };
 
+  const handleGenerateReport = async () => {
+    if (!sessionId) return;
+    setGeneratingReport(true);
+    try {
+      const blob = await markingApi.downloadReport(sessionId);
+      downloadBlob(blob, `${sessionId}_report.pdf`);
+    } catch (error) {
+      showToast(await extractErrorMessage(error, 'Could not generate the report. Please try again.'), 'error');
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
+
   const activeQuestion = questions[activeQuestionIndex] ?? null;
   const isApproved = session?.review_status === 'approved';
+  const allMarked = submissions.length > 0 && submissions.every((s) => s.status === 'marked');
 
   if (loadingSubmissions) {
     return (
@@ -154,6 +174,17 @@ export default function MarkingPage() {
           >
             Upload marking scheme →
           </Link>
+        )}
+
+        {allMarked && (
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={generatingReport}
+            onClick={handleGenerateReport}
+          >
+            Generate Report
+          </Button>
         )}
       </header>
 

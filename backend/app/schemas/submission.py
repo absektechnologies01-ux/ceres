@@ -46,3 +46,16 @@ class SubmissionQuestion(BaseModel):
     awarded_marks: Optional[float] = None
     comment: Optional[str] = None
     sheet_id: Optional[str] = None
+
+
+class AiSuggestionRequest(BaseModel):
+    question_text: str
+    student_answer: str
+    expected_answer: str
+    max_marks: float
+
+
+class AiSuggestionResponse(BaseModel):
+    ai_answer: str
+    suggested_score: float
+    rationale: str
