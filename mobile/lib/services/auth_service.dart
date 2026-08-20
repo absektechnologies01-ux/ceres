@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'server_config.dart';
 import '../config/app_config.dart';
 import '../models/user.dart';
 
@@ -44,7 +43,7 @@ class AuthService {
     String password,
   ) async {
     final response = await _dio.post(
-      '${ServerConfig.apiBaseUrl}/auth/login',
+      '${AppConfig.apiBaseUrl}/auth/login',
       data: {'username': email, 'password': password},
       options: Options(contentType: Headers.formUrlEncodedContentType),
     );
@@ -67,7 +66,7 @@ class AuthService {
 
   Future<String> refreshAccessToken(String refreshToken) async {
     final response = await _dio.post(
-      '${ServerConfig.apiBaseUrl}/auth/refresh',
+      '${AppConfig.apiBaseUrl}/auth/refresh',
       data: {'refresh_token': refreshToken},
     );
     return (response.data as Map<String, dynamic>)['access_token'] as String;

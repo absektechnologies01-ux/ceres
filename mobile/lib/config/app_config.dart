@@ -1,4 +1,15 @@
 class AppConfig {
+  // Backend, hosted on Render — one fixed URL for every phone, no
+  // per-device pairing. Update after deploying.
+  static const String apiBaseUrl = 'https://your-app.onrender.com';
+
+  // Hardware relay endpoint on the same backend — the ESP32 connects out
+  // to the backend too (it can't be reached directly from the internet),
+  // so the backend relays PAPER_DETECTED / SCAN_COMPLETE / etc. between
+  // the two. The connected user's access token is appended as ?token=...
+  // at connect time (see hardware_service.dart), not baked in here.
+  static const String hardwareWsUrl = 'wss://your-app.onrender.com/ws/app';
+
   // ImageKit configuration
   static const String imagekitPublicKey = 'public_Kto9TlcMV+9ep5+d65JCb0yq9Ko=';
   static const String imagekitPrivateKey = 'private_EvS4dGJx48Ft3CjWclfAAdT/KgI=';

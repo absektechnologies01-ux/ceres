@@ -9,10 +9,6 @@ class SessionProvider extends ChangeNotifier {
 
   SessionProvider(this._api);
 
-  /// Exposed so ServerSetupScreen can re-point the shared client after
-  /// re-pairing, without recreating this provider.
-  ApiService get api => _api;
-
   // ── State ─────────────────────────────────────────────────────────────────
 
   ScanSession? _activeSession;

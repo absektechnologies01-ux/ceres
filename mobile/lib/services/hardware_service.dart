@@ -1,15 +1,22 @@
 import 'dart:async';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'server_config.dart';
+import '../config/app_config.dart';
 
 enum HardwareEvent { paperDetected }
 
-/// Manages the WebSocket connection to the ESP32 conveyor controller.
+/// Manages the WebSocket connection to the backend's hardware relay (the
+/// ESP32 itself can't be reached directly — it's behind the hotspot's NAT
+/// and dials out to the backend, which forwards events in both directions).
 ///
 /// ScanScreen owns this object's lifecycle — create in initState, dispose in
 /// dispose. The service reconnects automatically using capped exponential
 /// backoff (1 s → 2 s → 4 s → 8 s → 16 s) if the connection drops.
 class HardwareService {
+  HardwareService({required Future<String?> Function() getAccessToken})
+      : _getAccessToken = getAccessToken;
+
+  final Future<String?> Function() _getAccessToken;
+
   Stream<HardwareEvent> get events => _eventController.stream;
   final _eventController = StreamController<HardwareEvent>.broadcast();
 
@@ -34,10 +41,17 @@ class HardwareService {
 
   // ── Internal ────────────────────────────────────────────────────────────────
 
-  void _tryConnect() {
+  Future<void> _tryConnect() async {
     if (_disposed) return;
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(ServerConfig.esp32WsUrl));
+      final token = await _getAccessToken();
+      if (token == null) {
+        _scheduleReconnect();
+        return;
+      }
+      if (_disposed) return;
+      _channel = WebSocketChannel.connect(
+          Uri.parse('${AppConfig.hardwareWsUrl}?token=$token'));
       _channelSub = _channel!.stream.listen(
         _onMessage,
         onError: (_) => _scheduleReconnect(),

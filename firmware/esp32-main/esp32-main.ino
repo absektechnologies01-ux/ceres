@@ -1,9 +1,20 @@
 #include <WiFi.h>
-#include <WebSocketsServer.h>
+#include <WebSocketsClient.h>
 
 // ── WiFi credentials ────────────────────────────────────────────────────────
+// Just needs real internet access now (not local reachability to any other
+// device on the same network) — a phone hotspot's cellular uplink works
+// fine for this.
 const char* WIFI_SSID     = "ceres";
 const char* WIFI_PASSWORD = "12345678";
+
+// ── Hosted backend ───────────────────────────────────────────────────────────
+// The ESP32 dials out to the backend (rather than hosting a server other
+// devices dial into) since it sits behind the hotspot's NAT and can't be
+// connected into from the internet.
+const char* BACKEND_HOST        = "your-app.onrender.com"; // set after deploying to Render
+const uint16_t BACKEND_PORT     = 443;
+const char* ESP32_SHARED_SECRET = "change-me-to-a-random-string"; // must match backend's env var
 
 // ── Motor / sensor pins ─────────────────────────────────────────────────────
 #define IN1    4
@@ -16,8 +27,8 @@ const char* WIFI_PASSWORD = "12345678";
 #define BUZZER_PIN     25
 #define BUZZER_GND_PIN 26
 
-// ── WebSocket server on port 81 ─────────────────────────────────────────────
-WebSocketsServer webSocket = WebSocketsServer(81);
+// ── WebSocket client to the hosted backend ──────────────────────────────────
+WebSocketsClient webSocket;
 
 // ── State machine ───────────────────────────────────────────────────────────
 enum State {
@@ -39,7 +50,7 @@ volatile bool appScanComplete = false;
 volatile bool appScanFailed   = false;
 volatile bool appScanFlagged  = false;
 
-int connectedClient = -1;
+bool backendConnected = false;
 
 // ── Buzzer helper ────────────────────────────────────────────────────────────
 void beep(int times, int onMs, int offMs) {
@@ -69,17 +80,17 @@ void motorStop() {
 }
 
 // ── WebSocket event handler ──────────────────────────────────────────────────
-void onWsEvent(uint8_t clientId, WStype_t type, uint8_t* payload, size_t length) {
+void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
   switch (type) {
 
     case WStype_CONNECTED:
-      connectedClient = clientId;
-      Serial.printf("App connected: client #%u\n", clientId);
+      backendConnected = true;
+      Serial.println("Connected to backend");
       break;
 
     case WStype_DISCONNECTED:
-      Serial.printf("App disconnected: client #%u\n", clientId);
-      connectedClient = -1;
+      Serial.println("Disconnected from backend");
+      backendConnected = false;
       if (currentState == WAITING_FOR_APP) {
         appScanFailed = true;
       }
@@ -89,7 +100,7 @@ void onWsEvent(uint8_t clientId, WStype_t type, uint8_t* payload, size_t length)
       String msg = "";
       for (size_t i = 0; i < length; i++) msg += (char)payload[i];
       msg.trim();
-      Serial.printf("Received from app: %s\n", msg.c_str());
+      Serial.printf("Received from backend: %s\n", msg.c_str());
 
       if (msg == "SCAN_COMPLETE") {
         appScanComplete = true;
@@ -152,9 +163,11 @@ void setup() {
   Serial.print("Connected! ESP32 IP: ");
   Serial.println(WiFi.localIP());
 
-  webSocket.begin();
+  String path = String("/ws/esp32?token=") + ESP32_SHARED_SECRET;
+  webSocket.beginSSL(BACKEND_HOST, BACKEND_PORT, path.c_str());
   webSocket.onEvent(onWsEvent);
-  Serial.println("WebSocket server started on port 81");
+  webSocket.setReconnectInterval(5000);
+  Serial.println("Connecting to backend WebSocket...");
 
   motorForward();
   Serial.println("Motor running. Ready.");
@@ -179,11 +192,11 @@ void loop() {
 
     case SCANNING:
       if (millis() - scanTimer >= MOTOR_SETTLE) {
-        if (connectedClient >= 0) {
-          webSocket.sendTXT(connectedClient, "PAPER_DETECTED");
+        if (backendConnected) {
+          webSocket.sendTXT("PAPER_DETECTED");
           Serial.println("Sent PAPER_DETECTED. Waiting for app...");
         } else {
-          Serial.println("No app connected. Resuming motor.");
+          Serial.println("Backend not connected. Resuming motor.");
           motorForward();
           gapTimer = 0;
           currentState = WAIT_FOR_GAP;

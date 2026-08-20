@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/app_config.dart';
+import '../providers/auth_provider.dart';
 import '../providers/session_provider.dart';
 import '../services/hardware_service.dart';
 import '../services/imagekit_service.dart';
@@ -30,7 +31,7 @@ class _ScanScreenState extends State<ScanScreen> {
   bool? _lastSuccess;
 
   // Hardware / auto-scan state
-  final _hardware = HardwareService();
+  late final HardwareService _hardware;
   StreamSubscription<HardwareEvent>? _hardwareSub;
   bool _hwPaused = false; // true while ESP32 is in ERROR_PAUSED (awaiting operator)
 
@@ -41,6 +42,8 @@ class _ScanScreenState extends State<ScanScreen> {
   void initState() {
     super.initState();
     _initCamera();
+    final auth = context.read<AuthProvider>();
+    _hardware = HardwareService(getAccessToken: auth.getAccessToken);
     _hardwareSub = _hardware.events.listen(_onHardwareEvent);
     _hardware.connect();
   }

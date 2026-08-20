@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     CHANDRA_OCR_API_URL: str
     CHANDRA_OCR_API_KEY: str
     STUDENT_ID_CONFIDENCE_THRESHOLD: float = 0.55
-    ESP32_WS_URL: str | None = None
-    API_PORT: int = 8000
+    ESP32_SHARED_SECRET: str
+    FRONTEND_URL: str = "http://localhost:5173"
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_API_URL: str = "https://api.deepseek.com/chat/completions"
 
